@@ -1,0 +1,25 @@
+{
+  "name": "hephaestus",
+  "version": "1.0.0",
+  "description": "gpu-rendering-service",
+  "main": "index.js",
+  "scripts": {
+    "test": "test",
+    "start": "node ./index.js"
+  },
+  "type": "module",
+  "author": "Kyle Lee",
+  "license": "ISC",
+  "dependencies": {
+    "@geckos.io/client": "^2.3.0",
+    "@geckos.io/server": "^2.3.0",
+    "@mapbox/node-pre-gyp": "^1.0.10",
+    "canvas": "^2.11.2",
+    "gl": "^6.0.2",
+    "node-fetch": "^2.6.9",
+    "three": "^0.151.3",
+    "typescript": "^5.0.4",
+    "webrtc-adapter": "^8.2.2",
+    "wrtc": "^0.4.7"
+  }
+}
