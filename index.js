@@ -14,8 +14,6 @@ const { RTCVideoSink, RTCVideoSource, i420ToRgba, rgbaToI420 } =
 import gl from "gl";
 
 import * as THREE from "three";
-
-import adapter from "webrtc-adapter";
 const width = 640;
 const height = 480;
 
@@ -23,36 +21,14 @@ const height = 480;
 const { scene, camera } = createScene();
 
 const renderer = createRenderer({ width, height });
-
-//For writing to the local file system
-//fs.writeFileSync("test.ppm", toP3(image));
-//process.exit(0);
-
 function createScene() {
   const scene = new THREE.Scene();
-
-  const box = new THREE.Mesh(
-    new THREE.BoxGeometry(),
-    new THREE.MeshPhongMaterial()
-  );
-  box.position.set(0, 0, 1);
-  //box.castShadow = true;
-
-  var SPEED = 0.01;
-  setInterval(() => {
-    box.rotation.x -= SPEED * 2;
-    box.rotation.y -= SPEED;
-    box.rotation.z -= SPEED * 3;
-    //    console.log("box rotation", box.rotation);
-  });
-
-  scene.add(box);
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(100, 100),
     new THREE.MeshPhongMaterial()
   );
-  //ground.receiveShadow = true;
+  // ground.receiveShadow = true;
   scene.add(ground);
 
   const light = new THREE.PointLight();
@@ -63,10 +39,11 @@ function createScene() {
   const camera = new THREE.PerspectiveCamera();
   camera.up.set(0, 0, 1);
   camera.position.set(-3, 3, 3);
-  camera.lookAt(box.position);
+  camera.lookAt(0, 0, 1);
+
   scene.add(camera);
 
-  return { scene, camera, box };
+  return { scene, camera };
 }
 
 function createRenderer({ height, width }) {
@@ -124,77 +101,35 @@ function extractPixels(context) {
 let canvas;
 let context;
 
-var localVideo;
-var localStream;
-var remoteVideo;
 var peerConnection;
 var uuid;
-var serverConnection;
-
-function beforeOffer(peerConnection) {
-  const source = new RTCVideoSource();
-  const track = source.createTrack();
-  const transceiver = peerConnection.addTransceiver(track);
-  const sink = new RTCVideoSink(transceiver.receiver.track);
-
-  let lastFrame = null;
-
-  function onFrame({ frame }) {
-    console.log("here", frame);
-    lastFrame = frame;
-  }
-  sink.onframe = ({ frame }) => {
-    // this event fires out of sync with ondata
-    // do some processing
-    //    source.onFrame(frame); // <- if we had timestamp data, we could synchronize this
-  };
-  //  sink.addEventListener("frame", onFrame);
-  canvas = createCanvas(width, height);
-  context = canvas.getContext("2d");
-  context.fillStyle = "white";
-  context.fillRect(0, 0, width, height);
-
-  //Main loop.
-  // responsible for re-rendering the scene, capturing the pixels, and then sending them to the client.
-  // This is effectively the "game loop"
-
-  const interval = setInterval(() => {
-    renderer.render(scene, camera);
-    const image = extractPixels(renderer.getContext());
-
-    const imageData = createImageData(image.pixels, image.width, image.height);
-
-    const i420Frame = {
-      width,
-      height,
-      data: new Uint8ClampedArray(1.5 * width * height),
-    };
-
-    rgbaToI420(imageData, i420Frame);
-    source.onFrame(i420Frame);
-  });
-
-  // NOTE(mroberts): This is a hack so that we can get a callback when the
-  // RTCPeerConnection is closed. In the future, we can subscribe to
-  // "connectionstatechange" events.
-  const { close } = peerConnection;
-  peerConnection.close = function () {
-    clearInterval(interval);
-    sink.stop();
-    track.stop();
-    return close.apply(this, arguments);
-  };
-}
 
 // ----------------------------------------------------------------------------------------
 
 const io = geckos();
 
 io.listen(3000); // default port is 9208
-
+let testPos = 0;
 io.onConnection((channel) => {
   channel.onDisconnect(() => {
     console.log(`${channel.id} got disconnected`);
+  });
+
+  channel.on("test", (data) => {
+    testPos += 1;
+
+    camera.position.set(testPos, 0, 1);
+  });
+
+  channel.on("drag-canvas", (data) => {});
+
+  channel.on("BoxGeometry", (data) => {
+    const box = new THREE.BoxGeometry();
+    const material = new THREE.MeshBasicMaterial({ color: "orange" });
+    const mesh = new THREE.Mesh(box, material);
+
+    mesh.position.set(0, 0, 1);
+    scene.add(mesh);
   });
 
   channel.on("chat message", (data) => {
@@ -221,39 +156,44 @@ io.onConnection((channel) => {
     if (!peerConnection) {
       peerConnection = new RTCPeerConnection(peerConnectionConfig);
     }
-
+    //comes from node-webrtc nonstandard api.
+    //basically, instead of having access to canvas.captureStream, we instead manually initialize the video source and the output(sink). We must also initialize our own MediaStream since the client is expecting a MediaStream object and not individual tracks
     const source = new RTCVideoSource();
-    //  let track = source.createTrack();
     const track = source.createTrack();
-    //    const transceiver = peerConnection.addTransceiver(track);
-    //    const sink = new RTCVideoSink(transceiver.receiver.track);
     const sink = new RTCVideoSink(track);
 
     const mediaStream = new MediaStream();
     let lastFrame = null;
+
+    //need to add an empty track just to initialize the connection
+    //otherwise webrtc won't initialize ice candidate searching
     peerConnection.addTrack(track, mediaStream);
+
+    //this is an event listener for the sink to listen for the source.onframe call below.
     sink.onframe = ({ frame }) => {
-      //      console.log("here");
       lastFrame = frame;
+      //convert the i420 frame to a webrtc MediaStreamTrack
       const currTrack = source.createTrack(frame);
+      //add that track to the stream
       mediaStream.addTrack(currTrack);
-      console.log("adding track");
+      //and send over webRTC. The line below will trigger the client's "peerconnection.ontrack" handler which handles setting it to the html video tag
       peerConnection.addTrack(currTrack, mediaStream);
     };
 
     canvas = createCanvas(width, height);
+    console.log("canvas", canvas);
     context = canvas.getContext("2d");
     context.fillStyle = "white";
     context.fillRect(0, 0, width, height);
 
     //Main loop.
-    // responsible for re-rendering the scene, capturing the pixels, and then sending them to the client.
+    // responsible for re-rendering the scene and capturing pixels
     // This is effectively the "game loop"
 
     const interval = setInterval(() => {
       renderer.render(scene, camera);
       const image = extractPixels(renderer.getContext());
-
+      //converts the threejs pixels to rgba that can be convereted to i420
       const imageData = createImageData(
         image.pixels,
         image.width,
@@ -265,8 +205,8 @@ io.onConnection((channel) => {
         height,
         data: new Uint8ClampedArray(1.5 * width * height),
       };
-      console.log("i420Frame", i420Frame);
       rgbaToI420(imageData, i420Frame);
+      //triggers the sink.onframe handler above
       source.onFrame(i420Frame);
     });
 
@@ -282,7 +222,6 @@ io.onConnection((channel) => {
     };
     peerConnection.onicecandidate = gotIceCandidate;
     peerConnection.ontrack = gotRemoteStream;
-    //doesnt work but needed to send data to client    peerConnection.addStream(localStream);
 
     var mediaConstraints = {
       offerToReceiveAudio: true,
@@ -296,9 +235,6 @@ io.onConnection((channel) => {
     }
   }
 
-  function getUserMediaSuccess(stream) {
-    localStream = stream;
-  }
   function gotMessageFromServer(message) {
     if (!peerConnection) start(false);
     var signal = message;
@@ -346,7 +282,6 @@ io.onConnection((channel) => {
 
   function gotRemoteStream(event) {
     console.log("got remote stream");
-    //remoteVideo.srcObject = event.streams[0];
   }
 
   function errorHandler(error) {
@@ -379,3 +314,108 @@ io.onConnection((channel) => {
   }
   pageReady();
 });
+
+//
+
+function transposeObject(input) {
+  const values = Object.values(input);
+  //Get Max Depth so we know what the structure should be
+  let maxDepth = 0;
+  const getMaxDepth = (values, depth) => {
+    values.forEach((value) => {
+      const isSubArr = Array.isArray(value);
+      if (isSubArr) {
+        const newDepth = depth + 1;
+        maxDepth = Math.max(maxDepth, newDepth);
+        getMaxDepth(value, maxDepth);
+      }
+    });
+  };
+  getMaxDepth(values[0], maxDepth);
+  console.log("maxDepth:", maxDepth);
+  const generateStructure = (values) => {
+    return values.map((value, index) => {
+      const isSubArr = Array.isArray(value);
+      if (isSubArr) {
+        return generateStructure(value);
+      } else {
+        return undefined;
+      }
+    });
+  };
+  const scaffold = generateStructure(values[0]);
+  const transpose = (values, depth, structure) => {
+    return values.map((value, currGeometryInstanceIndex) => {
+      const isSubArr = Array.isArray(value);
+      if (isSubArr) {
+        console.log(currGeometryInstanceIndex);
+        console.log("second call to structure", structure);
+
+        depth += 1;
+        if (depth > 1) {
+          return transpose(value, depth, structure[currGeometryInstanceIndex]);
+        } else {
+          return transpose(value, depth, structure);
+        }
+      } else {
+        if (structure[currGeometryInstanceIndex] === undefined) {
+          //this is the offending line. It needs to account for sublists. Currently, structure[idx][currGeometryInstanceIndex] only goes 1 level deep. It needs to be able to go N-levels deep
+          //For the example input below, it will produce [[[1],[2],[3],[undef, undef, undef]]]
+          //because structure[idx] is undefined.
+          //          console.log("idx", idx);
+          structure[currGeometryInstanceIndex] = [value];
+          //  console.log("index", [currGeometryInstanceIndex]);
+          //         console.log("structure", structure);
+        } else {
+          structure[currGeometryInstanceIndex].push(value);
+        }
+      }
+    });
+  };
+  const transposed = transpose(values[0], 0, scaffold[0]);
+  return scaffold;
+}
+
+const input = {
+  height: [[1, 2, 3, [4, 5, 6]]],
+  width: [[1, 2, 3, [4, 5, 6]]],
+  depth: [[1, 2, 3, [4, 5, 6]]],
+};
+
+console.log("ouput:", transposeObject(input)[0]); // Output: [[1, 1, 1], [2, 2, 2], [3, 3, 3], [[4, 4, 4], [5, 5, 5], [6, 6, 6]]]
+
+/*
+ *
+ * [
+ * D =1
+ *  [
+ * D = 2
+ *   [1,1,1],
+ *   [2,2,2],
+ *   [3,3,3]
+ * D=3
+ * [
+ *   [5,5,5],
+ *   [6,6,6,]
+ *   ]
+ *
+ *
+ *
+ *
+ *
+ *  ]
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *]
+ *
+ *
+ *
+ */
