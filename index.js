@@ -344,30 +344,65 @@ function transposeObject(input) {
     });
   };
   const scaffold = generateStructure(values[0]);
-  const transpose = (values, depth, structure) => {
-    return values.map((value, currGeometryInstanceIndex) => {
-      const isSubArr = Array.isArray(value);
-      if (isSubArr) {
-        console.log(currGeometryInstanceIndex);
+  const transpose = (values, depth, structure, singleValue) => {
+    console.log("depth", depth);
 
-        depth += 1;
-        if (depth > 1) {
-          return transpose(value, depth, structure[currGeometryInstanceIndex]);
+    if ((depth > 1 && values.length === 1) || singleValue) {
+      return structure.map((subArr, index) => {
+        console.log(subArr);
+        const isSubArr = Array.isArray(subArr[0]);
+
+        if (isSubArr) {
+          depth += 1;
+          if (structure[index] === undefined) {
+            depth -= 1;
+            return;
+          }
+          if (depth > 1) {
+            return transpose(subArr, depth, structure[index], values[0]);
+          } else {
+            return transpose(subArr, depth, structure, values[0]);
+          }
         } else {
-          return transpose(value, depth, structure);
+          if (structure[index] === undefined) {
+            structure[index] = [singleValue];
+          } else {
+            structure[index].push(singleValue);
+          }
         }
-      } else {
-        if (structure[currGeometryInstanceIndex] === undefined) {
-          structure[currGeometryInstanceIndex] = [value];
+      });
+    } else {
+      return values.map((value, currGeometryInstanceIndex) => {
+        const isSubArr = Array.isArray(value);
+        if (isSubArr) {
+          depth += 1;
+          if (structure[currGeometryInstanceIndex] === undefined) {
+            depth -= 1;
+          }
+          if (depth > 1) {
+            const singleValue = value.length === 1 ? value[0] : undefined;
+            return transpose(
+              value,
+              depth,
+              structure[currGeometryInstanceIndex],
+              singleValue
+            );
+          } else {
+            return transpose(value, depth, structure, singleValue);
+          }
         } else {
-          structure[currGeometryInstanceIndex].push(value);
+          if (structure[currGeometryInstanceIndex] === undefined) {
+            structure[currGeometryInstanceIndex] = [value];
+          } else {
+            structure[currGeometryInstanceIndex].push(value);
+          }
         }
-      }
-    });
+      });
+    }
   };
-  for (let i = 0; i < values.length; i++) {
-    const transposed = transpose(values[0], 0, scaffold[0]);
-  }
+  // for (let i = 0; i < values.length; i++) {
+  const transposed = transpose(values, 0, scaffold, undefined);
+  //}
   return scaffold;
 }
 
@@ -377,40 +412,10 @@ const input = {
   depth: [[1, 2, 3, [4, 5, 6]]],
 };
 
-console.log("ouput:", transposeObject(input)[0]); // Output: [[1, 1, 1], [2, 2, 2], [3, 3, 3], [[4, 4, 4], [5, 5, 5], [6, 6, 6]]]
+const singleInput = {
+  height: [[1, 2, 3, [4, 5, 6]]],
+  width: [[1, 2, 3, [4, 5, 6]]],
+  depth: [[1]],
+};
 
-/*
- *
- * [
- * D =1
- *  [
- * D = 2
- *   [1,1,1],
- *   [2,2,2],
- *   [3,3,3]
- * D=3
- * [
- *   [5,5,5],
- *   [6,6,6,]
- *   ]
- *
- *
- *
- *
- *
- *  ]
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *]
- *
- *
- *
- */
+console.log("ouput:", transposeObject(singleInput)[0]); // Output: [[1, 1, 1], [2, 2, 2], [3, 3, 3], [[4, 4, 4], [5, 5, 5], [6, 6, 6]]]
