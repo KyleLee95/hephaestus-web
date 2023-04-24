@@ -349,7 +349,6 @@ function transposeObject(input) {
       const isSubArr = Array.isArray(value);
       if (isSubArr) {
         console.log(currGeometryInstanceIndex);
-        console.log("second call to structure", structure);
 
         depth += 1;
         if (depth > 1) {
@@ -359,20 +358,16 @@ function transposeObject(input) {
         }
       } else {
         if (structure[currGeometryInstanceIndex] === undefined) {
-          //this is the offending line. It needs to account for sublists. Currently, structure[idx][currGeometryInstanceIndex] only goes 1 level deep. It needs to be able to go N-levels deep
-          //For the example input below, it will produce [[[1],[2],[3],[undef, undef, undef]]]
-          //because structure[idx] is undefined.
-          //          console.log("idx", idx);
           structure[currGeometryInstanceIndex] = [value];
-          //  console.log("index", [currGeometryInstanceIndex]);
-          //         console.log("structure", structure);
         } else {
           structure[currGeometryInstanceIndex].push(value);
         }
       }
     });
   };
-  const transposed = transpose(values[0], 0, scaffold[0]);
+  for (let i = 0; i < values.length; i++) {
+    const transposed = transpose(values[0], 0, scaffold[0]);
+  }
   return scaffold;
 }
 
