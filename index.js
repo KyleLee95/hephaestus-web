@@ -116,11 +116,13 @@ io.onConnection((channel) => {
 
   channel.on("test", (data) => {
     testPos += 1;
-
+    console.log("canvas", canvas);
     camera.position.set(testPos, 0, 1);
   });
 
-  channel.on("drag-canvas", (data) => {});
+  channel.on("drag-canvas", (data) => {
+    console.log(canvas);
+  });
 
   channel.on("BoxGeometry", (data) => {
     const box = new THREE.BoxGeometry();
