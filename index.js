@@ -1,6 +1,5 @@
 "use strict";
 import geckos from "@geckos.io/server";
-import { createCanvas, createImageData } from "canvas";
 import * as wrtc from "wrtc";
 const {
   RTCIceCandidate,
@@ -11,98 +10,9 @@ const {
 const { RTCVideoSink, RTCVideoSource, i420ToRgba, rgbaToI420 } =
   wrtc.default.nonstandard;
 
+import { createCanvas, createImageData } from "canvas";
 import gl from "gl";
-
 import * as THREE from "three";
-const width = 640;
-const height = 480;
-
-// \/\/\/\/\/\/\/\/\/\/\/\/\/\\/ ALL THE THREEJS STUFF \/\/\/\/\/\/\/\/\/\/\/\/\/
-const { scene, camera } = createScene();
-
-const renderer = createRenderer({ width, height });
-function createScene() {
-  const scene = new THREE.Scene();
-
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(100, 100),
-    new THREE.MeshPhongMaterial()
-  );
-  // ground.receiveShadow = true;
-  scene.add(ground);
-
-  const light = new THREE.PointLight();
-  light.position.set(3, 3, 5);
-  // light.castShadow = true;
-  scene.add(light);
-
-  const camera = new THREE.PerspectiveCamera();
-  camera.up.set(0, 0, 1);
-  camera.position.set(-3, 3, 3);
-  camera.lookAt(0, 0, 1);
-
-  scene.add(camera);
-
-  return { scene, camera };
-}
-
-function createRenderer({ height, width }) {
-  // THREE expects a canvas object to exist, but it doesn't actually have to work.
-  const canvas = {
-    width,
-    height,
-    addEventListener: (event) => {},
-    removeEventListener: (event) => {},
-  };
-
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    powerPreference: "high-performance",
-    context: gl(width, height, {
-      preserveDrawingBuffer: true,
-    }),
-  });
-  return renderer;
-}
-
-function extractPixels(context) {
-  const width = context.drawingBufferWidth;
-  const height = context.drawingBufferHeight;
-
-  //WHAT WE WANT IS FROM RIGHT HERE.
-  //WE WANT THE PIXELS AND THE RGBA
-  const frameBufferPixels = new Uint8Array(width * height * 4);
-  context.readPixels(
-    0,
-    0,
-    width,
-    height,
-    context.RGBA,
-    context.UNSIGNED_BYTE,
-    frameBufferPixels
-  );
-  // The framebuffer coordinate space has (0, 0) in the bottom left, whereas images usually
-  // have (0, 0) at the top left. Vertical flipping follows:
-  const pixels = new Uint8ClampedArray(width * height * 4);
-  for (let fbRow = 0; fbRow < height; fbRow += 1) {
-    let rowData = frameBufferPixels.subarray(
-      fbRow * width * 4,
-      (fbRow + 1) * width * 4
-    );
-    let imgRow = height - fbRow - 1;
-    pixels.set(rowData, imgRow * width * 4);
-  }
-  //take the output, convert it to a WebRTC track (manually) and then send it to the client to be dropped in as a video
-  return { width, height, pixels };
-}
-
-// \/\/\/\/\/\/\/\/\/\/\/\/\/\/ ALL THE WEBRTC STUFF \/\/\/\/\/\/\/\/\/\/\/\/\/\/
-let canvas;
-let context;
-
-var peerConnection;
-var uuid;
 
 // ----------------------------------------------------------------------------------------
 
@@ -110,7 +20,96 @@ const io = geckos();
 
 io.listen(3000); // default port is 9208
 let testPos = 0;
+
+const width = 640;
+const height = 480;
+
+// \/\/\/\/\/\/\/\/\/\/\/\/\/\/ ALL THE WEBRTC STUFF \/\/\/\/\/\/\/\/\/\/\/\/\/\/
+let canvas;
+let context;
+
+var peerConnection;
+var uuid;
 io.onConnection((channel) => {
+  // \/\/\/\/\/\/\/\/\/\/\/\/\/\\/ ALL THE THREEJS STUFF \/\/\/\/\/\/\/\/\/\/\/\/\/
+  const { scene, camera } = createScene();
+
+  const renderer = createRenderer({ width, height });
+  function createScene() {
+    const scene = new THREE.Scene();
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshPhongMaterial()
+    );
+    // ground.receiveShadow = true;
+    scene.add(ground);
+
+    const light = new THREE.PointLight();
+    light.position.set(3, 3, 5);
+    // light.castShadow = true;
+    scene.add(light);
+
+    const camera = new THREE.PerspectiveCamera();
+    camera.up.set(0, 0, 1);
+    camera.position.set(-3, 3, 3);
+    camera.lookAt(0, 0, 1);
+
+    scene.add(camera);
+
+    return { scene, camera };
+  }
+
+  function createRenderer({ height, width }) {
+    // THREE expects a canvas object to exist, but it doesn't actually have to work.
+    const canvas = {
+      width,
+      height,
+      addEventListener: (event) => {},
+      removeEventListener: (event) => {},
+    };
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: "high-performance",
+      context: gl(width, height, {
+        preserveDrawingBuffer: true,
+      }),
+    });
+    return renderer;
+  }
+
+  function extractPixels(context) {
+    const width = context.drawingBufferWidth;
+    const height = context.drawingBufferHeight;
+
+    //WHAT WE WANT IS FROM RIGHT HERE.
+    //WE WANT THE PIXELS AND THE RGBA
+    const frameBufferPixels = new Uint8Array(width * height * 4);
+    context.readPixels(
+      0,
+      0,
+      width,
+      height,
+      context.RGBA,
+      context.UNSIGNED_BYTE,
+      frameBufferPixels
+    );
+    // The framebuffer coordinate space has (0, 0) in the bottom left, whereas images usually
+    // have (0, 0) at the top left. Vertical flipping follows:
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let fbRow = 0; fbRow < height; fbRow += 1) {
+      let rowData = frameBufferPixels.subarray(
+        fbRow * width * 4,
+        (fbRow + 1) * width * 4
+      );
+      let imgRow = height - fbRow - 1;
+      pixels.set(rowData, imgRow * width * 4);
+    }
+    //take the output, convert it to a WebRTC track (manually) and then send it to the client to be dropped in as a video
+    return { width, height, pixels };
+  }
   channel.onDisconnect(() => {
     console.log(`${channel.id} got disconnected`);
   });
@@ -127,7 +126,6 @@ io.onConnection((channel) => {
     const box = new THREE.BoxGeometry();
     const material = new THREE.MeshBasicMaterial({ color: "orange" });
     const mesh = new THREE.Mesh(box, material);
-
     mesh.position.set(0, 0, 1);
     scene.add(mesh);
   });
@@ -314,108 +312,3 @@ io.onConnection((channel) => {
   }
   pageReady();
 });
-
-//
-
-function transposeObject(input) {
-  const values = Object.values(input);
-  //Get Max Depth so we know what the structure should be
-  let maxDepth = 0;
-  const getMaxDepth = (values, depth) => {
-    values.forEach((value) => {
-      const isSubArr = Array.isArray(value);
-      if (isSubArr) {
-        const newDepth = depth + 1;
-        maxDepth = Math.max(maxDepth, newDepth);
-        getMaxDepth(value, maxDepth);
-      }
-    });
-  };
-  getMaxDepth(values[0], maxDepth);
-  console.log("maxDepth:", maxDepth);
-  const generateStructure = (values) => {
-    return values.map((value, index) => {
-      const isSubArr = Array.isArray(value);
-      if (isSubArr) {
-        return generateStructure(value);
-      } else {
-        return undefined;
-      }
-    });
-  };
-  const scaffold = generateStructure(values[0]);
-  const transpose = (values, depth, structure, singleValue) => {
-    console.log("depth", depth);
-
-    if ((depth > 1 && values.length === 1) || singleValue) {
-      return structure.map((subArr, index) => {
-        console.log(subArr);
-        const isSubArr = Array.isArray(subArr[0]);
-
-        if (isSubArr) {
-          depth += 1;
-          if (structure[index] === undefined) {
-            depth -= 1;
-            return;
-          }
-          if (depth > 1) {
-            return transpose(subArr, depth, structure[index], values[0]);
-          } else {
-            return transpose(subArr, depth, structure, values[0]);
-          }
-        } else {
-          if (structure[index] === undefined) {
-            structure[index] = [singleValue];
-          } else {
-            structure[index].push(singleValue);
-          }
-        }
-      });
-    } else {
-      return values.map((value, currGeometryInstanceIndex) => {
-        const isSubArr = Array.isArray(value);
-        if (isSubArr) {
-          depth += 1;
-          if (structure[currGeometryInstanceIndex] === undefined) {
-            depth -= 1;
-          }
-          if (depth > 1) {
-            const singleValue = value.length === 1 ? value[0] : undefined;
-            return transpose(
-              value,
-              depth,
-              structure[currGeometryInstanceIndex],
-              singleValue
-            );
-          } else {
-            return transpose(value, depth, structure, singleValue);
-          }
-        } else {
-          if (structure[currGeometryInstanceIndex] === undefined) {
-            structure[currGeometryInstanceIndex] = [value];
-          } else {
-            structure[currGeometryInstanceIndex].push(value);
-          }
-        }
-      });
-    }
-  };
-  // for (let i = 0; i < values.length; i++) {
-  const transposed = transpose(values, 0, scaffold, undefined);
-  //}
-  return scaffold;
-}
-
-const input = {
-  height: [[1, 2, 3, [4, 5, 6]]],
-  width: [[1, 2, 3, [4, 5, 6]]],
-  depth: [[1, 2, 3, [4, 5, 6]]],
-};
-
-const singleInput = {
-  height: [[1, 2, 3, [4, 5, 6]]],
-  width: [[1, 2, 3, [4, 5, 6]]],
-  depth: [[1]],
-};
-
-console.log("ouput:", transposeObject(singleInput)[0]); // Output: [[1, 1, 1], [2, 2, 2], [3, 3, 3], [[4, 4, 4], [5, 5, 5], [6, 6, 6]]]
