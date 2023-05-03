@@ -65,6 +65,7 @@ io.onConnection((channel) => {
     const canvas = {
       width,
       height,
+      style: { touchAction: "none" },
       addEventListener: (event) => {},
       removeEventListener: (event) => {},
     };
@@ -77,6 +78,7 @@ io.onConnection((channel) => {
         preserveDrawingBuffer: true,
       }),
     });
+    console.log("renderer", renderer);
     return renderer;
   }
 
